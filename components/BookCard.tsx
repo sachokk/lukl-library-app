@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils';
 
 export function BookCard({ book }: { book: Book }) {
   const author = book.authors[0] ?? 'Невідомий автор';
-  const genre = book.genres[0];
+  const genre = book.genres?.[0];
 
   return (
     <Link href={`/book/${book.sysNo}`} className="group block">

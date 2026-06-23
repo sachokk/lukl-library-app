@@ -1,11 +1,13 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Search, BookOpen } from 'lucide-react';
 import { BookCard } from '@/components/BookCard';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
+import { getRecentlyViewed, clearRecentlyViewed, type RecentBook } from '@/lib/recentlyViewed';
 import type { Book, SearchCode } from '@/lib/types';
 
 const SEARCH_TYPES: { code: SearchCode; label: string }[] = [
@@ -18,15 +20,25 @@ const SEARCH_TYPES: { code: SearchCode; label: string }[] = [
 
 const PER_PAGE = 20;
 
-export default function HomePage() {
-  const [query, setQuery]       = useState('');
-  const [code, setCode]         = useState<SearchCode>('WRD');
+function SearchContent() {
+  const searchParams = useSearchParams();
+  const initQ    = searchParams.get('q') ?? '';
+  const initCode = (searchParams.get('code') ?? 'WRD') as SearchCode;
+
+  const [query, setQuery]       = useState(initQ);
+  const [code, setCode]         = useState<SearchCode>(initCode);
   const [books, setBooks]       = useState<Book[]>([]);
   const [total, setTotal]       = useState(0);
   const [page, setPage]         = useState(1);
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState('');
   const [searched, setSearched] = useState('');
+  const [recentBooks, setRecentBooks] = useState<RecentBook[]>([]);
+
+  // Load recently viewed from localStorage
+  useEffect(() => {
+    setRecentBooks(getRecentlyViewed());
+  }, []);
 
   const doSearch = useCallback(async (q: string, c: SearchCode, p: number) => {
     if (!q.trim()) return;
@@ -47,6 +59,12 @@ export default function HomePage() {
     }
   }, []);
 
+  // Auto-search on mount when URL has query (e.g. from author link)
+  useEffect(() => {
+    if (initQ) doSearch(initQ, initCode, 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setPage(1);
@@ -65,9 +83,17 @@ export default function HomePage() {
     setTotal(0);
     setQuery('');
     setError('');
+    // Refresh recent list in case new books were viewed
+    setRecentBooks(getRecentlyViewed());
+  };
+
+  const clearRecent = () => {
+    clearRecentlyViewed();
+    setRecentBooks([]);
   };
 
   const totalPages = Math.ceil(total / PER_PAGE);
+  const isIdle = !loading && !searched;
 
   return (
     <div className="min-h-screen bg-background">
@@ -84,7 +110,7 @@ export default function HomePage() {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Назва, автор, ISBN..."
-                autoFocus
+                autoFocus={!initQ}
                 className="h-10 w-full rounded-lg border border-input bg-transparent pl-9 pr-3 text-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
               />
             </div>
@@ -161,14 +187,41 @@ export default function HomePage() {
           </>
         )}
 
-        {!loading && !searched && (
-          <div className="mt-4 flex flex-col items-center gap-3 pb-12 text-muted-foreground">
-            <BookOpen className="h-10 w-10 opacity-20" />
-            <p className="text-sm">Введи назву книги, автора або ISBN</p>
-          </div>
+        {isIdle && (
+          recentBooks.length > 0 ? (
+            <section className="mt-2 pb-8">
+              <div className="mb-3 flex items-center justify-between">
+                <h2 className="text-sm font-semibold text-foreground">Нещодавно переглянуті</h2>
+                <button
+                  onClick={clearRecent}
+                  className="text-xs text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  Очистити
+                </button>
+              </div>
+              <div className="space-y-2">
+                {recentBooks.map((b) => (
+                  <BookCard key={b.sysNo} book={b as unknown as Book} />
+                ))}
+              </div>
+            </section>
+          ) : (
+            <div className="mt-4 flex flex-col items-center gap-3 pb-12 text-muted-foreground">
+              <BookOpen className="h-10 w-10 opacity-20" />
+              <p className="text-sm">Введи назву книги, автора або ISBN</p>
+            </div>
+          )
         )}
       </div>
     </div>
+  );
+}
+
+export default function HomePage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-background" />}>
+      <SearchContent />
+    </Suspense>
   );
 }
 

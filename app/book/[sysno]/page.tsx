@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { ChevronLeft, Star, ExternalLink, Heart, BookOpen } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -9,6 +10,7 @@ import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
 import { getBranchInfo } from '@/lib/addresses';
 import { isOnShelf, toggleShelf } from '@/lib/shelf';
+import { addToRecentlyViewed } from '@/lib/recentlyViewed';
 import type { Book, LibraryItem, BookEnrichment } from '@/lib/types';
 
 const LESYA_CODES = new Set(['156', '157', '158', 'OI', 'OZL', 'KRA', 'ONO', 'INT']);
@@ -147,7 +149,11 @@ export default function BookPage() {
   useEffect(() => {
     fetch(`/api/search?q=${sysno}&code=SYS&count=1`)
       .then((r) => r.json())
-      .then((d) => setBook(d.books?.[0] ?? null))
+      .then((d) => {
+        const b = d.books?.[0] ?? null;
+        setBook(b);
+        if (b) addToRecentlyViewed({ sysNo: sysno, title: b.title, authors: b.authors, year: b.year });
+      })
       .catch(console.error)
       .finally(() => setBL(false));
 
@@ -235,7 +241,17 @@ export default function BookPage() {
 
                 {book.authors.length > 0 && (
                   <p className="mt-1 text-base text-muted-foreground">
-                    {book.authors.join(', ')}
+                    {book.authors.map((a, i) => (
+                      <span key={a}>
+                        {i > 0 && ', '}
+                        <Link
+                          href={`/?q=${encodeURIComponent(a)}&code=WAU`}
+                          className="transition-colors hover:text-primary hover:underline"
+                        >
+                          {a}
+                        </Link>
+                      </span>
+                    ))}
                   </p>
                 )}
 
