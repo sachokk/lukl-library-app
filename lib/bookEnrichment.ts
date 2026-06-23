@@ -1,4 +1,4 @@
-import type { BookEnrichment } from './types';
+import type { BookEnrichment, ChoiceAward } from './types';
 
 export type { BookEnrichment };
 
@@ -11,12 +11,14 @@ const BROWSER_UA =
 //   • cover image from JSON-LD "image"
 //   • aggregateRating from JSON-LD
 //   • description from __NEXT_DATA__ Apollo state (first Book with non-empty description)
+//   • choiceAwards from __NEXT_DATA__ Apollo state Work object
 
 interface GoodreadsResult {
   coverUrl?: string;
   description?: string;
   rating?: number;
   ratingCount?: number;
+  choiceAwards?: ChoiceAward[];
 }
 
 async function fetchGoodreads(isbn: string): Promise<GoodreadsResult | null> {
@@ -47,31 +49,37 @@ async function fetchGoodreads(isbn: string): Promise<GoodreadsResult | null> {
       } catch { /* skip malformed blocks */ }
     }
 
-    // 2. __NEXT_DATA__ → description
+    // 2. __NEXT_DATA__ → description + choiceAwards
     let description: string | undefined;
+    let choiceAwards: ChoiceAward[] | undefined;
+
     const nextDataMatch = html.match(/<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/);
     if (nextDataMatch) {
       try {
         const nextData = JSON.parse(nextDataMatch[1]);
         const apollo   = nextData?.props?.pageProps?.apolloState ?? {};
         for (const val of Object.values(apollo) as Record<string, unknown>[]) {
-          if (
-            val &&
-            typeof val === 'object' &&
-            (val as Record<string, unknown>).__typename === 'Book'
-          ) {
-            const desc = (val as Record<string, unknown>).description;
-            if (typeof desc === 'string' && desc.length > 50) {
+          if (!val || typeof val !== 'object') continue;
+          const obj = val as Record<string, unknown>;
+
+          if (obj.__typename === 'Book') {
+            const desc = obj.description;
+            if (!description && typeof desc === 'string' && desc.length > 50) {
               description = desc.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').trim();
-              break;
             }
+          }
+
+          if (obj.__typename === 'Work' && Array.isArray(obj.choiceAwards) && obj.choiceAwards.length > 0) {
+            choiceAwards = (obj.choiceAwards as ChoiceAward[]).filter(
+              (a) => typeof a.awardedAt === 'number' && typeof a.category === 'string',
+            );
           }
         }
       } catch { /* skip */ }
     }
 
-    if (!coverUrl && !rating && !description) return null;
-    return { coverUrl, description, rating, ratingCount };
+    if (!coverUrl && !rating && !description && !choiceAwards) return null;
+    return { coverUrl, description, rating, ratingCount, choiceAwards };
   } catch {
     return null;
   }
@@ -123,13 +131,14 @@ export async function fetchEnrichment(
   // 1. Goodreads by ISBN (cover + rating + Ukrainian description)
   if (cleanIsbn) {
     const gr = await fetchGoodreads(cleanIsbn);
-    if (gr?.coverUrl || gr?.rating || gr?.description) {
+    if (gr?.coverUrl || gr?.rating || gr?.description || gr?.choiceAwards) {
       return {
-        coverUrl:    gr.coverUrl,
-        description: gr.description,
-        rating:      gr.rating,
-        ratingCount: gr.ratingCount,
-        source:      'goodreads',
+        coverUrl:     gr.coverUrl,
+        description:  gr.description,
+        rating:       gr.rating,
+        ratingCount:  gr.ratingCount,
+        choiceAwards: gr.choiceAwards,
+        source:       'goodreads',
       };
     }
   }

@@ -36,11 +36,19 @@ export interface CatalogResult {
   session?: string; // OPAC session token for pages 2+ (short-jump navigation)
 }
 
+export interface ChoiceAward {
+  awardedAt: number;       // year, e.g. 2017
+  category: string;        // e.g. "Readers' Favorite Science Fiction"
+  designation: 'WINNER' | 'NOMINEE' | string;
+  webUrl: string;
+}
+
 export interface BookEnrichment {
   coverUrl?: string;
   description?: string;
-  rating?: number;       // e.g. 3.68
-  ratingCount?: number;  // e.g. 351917
+  rating?: number;         // e.g. 3.68
+  ratingCount?: number;    // e.g. 351917
+  choiceAwards?: ChoiceAward[];
   source?: 'goodreads' | 'google' | 'openlibrary';
 }
 

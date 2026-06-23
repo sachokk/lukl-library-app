@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ChevronLeft, Star, ExternalLink, Heart, BookOpen } from 'lucide-react';
+import { ChevronLeft, Star, ExternalLink, Heart, BookOpen, Trophy } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Separator } from '@/components/ui/separator';
@@ -264,6 +264,27 @@ export default function BookPage() {
                         ({enrichment.ratingCount.toLocaleString('uk-UA')} оцінок · Goodreads)
                       </span>
                     )}
+                  </div>
+                )}
+
+                {enrichment?.choiceAwards && enrichment.choiceAwards.length > 0 && (
+                  <div className="mt-3 flex flex-col gap-1.5">
+                    {enrichment.choiceAwards.map((award) => (
+                      <a
+                        key={`${award.awardedAt}-${award.category}`}
+                        href={award.webUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex w-fit items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-800 ring-1 ring-amber-200 transition-colors hover:bg-amber-100 dark:bg-amber-950/40 dark:text-amber-300 dark:ring-amber-800/60"
+                      >
+                        <Trophy className="h-3 w-3 shrink-0" />
+                        <span>
+                          Goodreads Choice Award
+                          {award.designation === 'WINNER' ? ' · Переможець' : ' · Номінант'}
+                          {' · '}{award.category} ({award.awardedAt})
+                        </span>
+                      </a>
+                    ))}
                   </div>
                 )}
 
