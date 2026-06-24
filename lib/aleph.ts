@@ -71,7 +71,7 @@ function parseRecord(recordXml: string): Book {
 
   const f260      = extractVarfields(recordXml, '260')[0] ?? '';
   const place     = subfield(f260, 'a').replace(/[:\[\]]/g, '').trim() || undefined;
-  const publisher = subfield(f260, 'b').replace(/,$/, '').trim() || undefined;
+  const publisher = subfield(f260, 'b').replace(/[,.:;]+$/, '').trim() || undefined;
   const year      = subfield(f260, 'c').replace(/[.\[\]]/g, '').trim() || undefined;
 
   const f020 = extractVarfields(recordXml, '020');
@@ -296,6 +296,7 @@ export async function searchCatalog(
   sublibraryCode = '156',
   page = 1,
   session?: string,
+  findCode = 'WSU',
 ): Promise<CatalogResult & { session?: string }> {
   let url: string;
 
@@ -303,7 +304,7 @@ export async function searchCatalog(
     const params = new URLSearchParams({
       func:             'find-b',
       request:          subject,
-      find_code:        'WSU',
+      find_code:        findCode,
       filter_code_4:    'WSBL',
       filter_request_4: sublibraryCode,
       local_base:       BASE,
@@ -336,6 +337,46 @@ export async function getNewArrivals(sublibraryCode = '156'): Promise<CatalogRes
   const res  = await fetch(url, { next: { revalidate: 3600 } });
   const html = await res.text();
   return parseOpaSearchHtml(html); // naturally ≤ 20 books (one OPAC page)
+}
+
+// OPAC-based search with optional filters (sublibrary and/or language).
+// Uses func=find-b which supports filter_code_N/filter_request_N unlike X-Server.
+// onlyLesya: restrict to main Lesya Ukrainka building (WSBL=156)
+// lang: MARC language code, e.g. 'ukr', 'eng', 'pol', 'rus'
+export async function searchBooksFiltered(
+  query: string,
+  searchCode: SearchCode,
+  page = 1,
+  session?: string,
+  onlyLesya = false,
+  lang?: string,
+): Promise<CatalogResult & { session?: string }> {
+  let url: string;
+
+  if (page === 1 || !session) {
+    const params = new URLSearchParams({
+      func:      'find-b',
+      request:   query,
+      find_code: searchCode,
+      local_base: BASE,
+    });
+    if (lang) {
+      params.set('filter_code_1', 'WLN');
+      params.set('filter_request_1', lang.toUpperCase());
+    }
+    if (onlyLesya) {
+      params.set('filter_code_4', 'WSBL');
+      params.set('filter_request_4', '156');
+    }
+    url = `${OPAC}/F?${params}`;
+  } else {
+    const jump = String((page - 1) * 20 + 1).padStart(6, '0');
+    url = `${OPAC}/F/${session}?func=short-jump&jump=${jump}`;
+  }
+
+  const res  = await fetch(url, { cache: 'no-store' });
+  const html = await res.text();
+  return parseOpaSearchHtml(html);
 }
 
 export async function getBookByDocNumber(sysNo: string): Promise<Book | null> {

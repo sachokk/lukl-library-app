@@ -1,14 +1,14 @@
 'use client';
 
 import { useState, useCallback, useEffect, useRef, Suspense } from 'react';
-import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { LayoutList, LayoutGrid, Grid3X3 } from 'lucide-react';
-import { CATEGORIES, type Category } from '@/lib/categories';
+import { GENRE_GROUPS, SUBJECT_CATEGORIES, ALL_CATALOG_ITEMS, type Category } from '@/lib/categories';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import type { CatalogBook } from '@/lib/types';
+import Link from 'next/link';
 
 const PER_PAGE = 20;
 const LAYOUT_KEY = 'library_catalog_layout';
@@ -58,8 +58,7 @@ function CatalogContent() {
 
   const categoryId = searchParams.get('category') ?? '';
   const pageNum    = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10));
-
-  const selected = CATEGORIES.find((c) => c.id === categoryId) ?? null;
+  const selected   = ALL_CATALOG_ITEMS.find((c) => c.id === categoryId) ?? null;
 
   const [books, setBooks]         = useState<CatalogBook[]>([]);
   const [total, setTotal]         = useState(0);
@@ -81,6 +80,7 @@ function CatalogContent() {
     setError('');
     try {
       const params = new URLSearchParams({ subject: cat.subject, page: String(p) });
+      if (cat.findCode) params.set('findCode', cat.findCode);
       if (p > 1 && sess) params.set('session', sess);
       const res  = await fetch(`/api/catalog?${params}`);
       const data = await res.json();
@@ -127,44 +127,51 @@ function CatalogContent() {
   return (
     <div className="min-h-screen bg-background">
       <div className="mx-auto max-w-5xl px-3 py-4 sm:px-4 sm:py-6">
+
+        {/* Header */}
         <div className="mb-5">
-          <h1 className="text-xl font-bold tracking-tight">Каталог за розділами</h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">Книги в Абонементі бібліотеки</p>
+          <h1 className="text-xl font-bold tracking-tight">Каталог</h1>
+          <p className="mt-0.5 text-sm text-muted-foreground">Книги в Абонементі бібліотеки ім. Лесі Українки</p>
         </div>
 
-        {/* Category grid */}
-        <div className="grid grid-cols-3 gap-2 sm:grid-cols-5 lg:grid-cols-8">
-          {CATEGORIES.map((cat) => (
-            <button
-              key={cat.id}
-              onClick={() => selectCategory(cat)}
-              className={cn(
-                'flex flex-col items-center gap-1.5 rounded-xl px-2 py-3 text-center transition-all duration-150',
-                'ring-1 focus-visible:ring-2 focus-visible:ring-ring',
-                selected?.id === cat.id
-                  ? 'bg-primary/10 ring-primary/40 shadow-sm'
-                  : 'bg-card ring-foreground/8 hover:ring-primary/30 hover:shadow-sm',
-              )}
-            >
-              <span className="text-2xl leading-none">{cat.icon}</span>
-              <span className={cn(
-                'text-xs font-medium leading-tight',
-                selected?.id === cat.id ? 'text-primary' : 'text-foreground/80',
-              )}>
-                {cat.label}
-              </span>
-            </button>
-          ))}
-        </div>
+        {/* ── Genres ─────────────────────────────────────────────────── */}
+        <section className="mb-6">
+          <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Жанри
+          </h2>
+          <div className="space-y-3">
+            {GENRE_GROUPS.map((group) => (
+              <div key={group.id} className="flex flex-wrap items-baseline gap-x-3 gap-y-1.5">
+                <span className="shrink-0 text-[11px] text-muted-foreground/60 min-w-[110px]">
+                  {group.label}
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  {group.genres.map((genre) => (
+                    <button
+                      key={genre.id}
+                      onClick={() => selectCategory(genre)}
+                      className={cn(
+                        'rounded-full border px-3 py-0.5 text-xs font-medium transition-all duration-150',
+                        selected?.id === genre.id
+                          ? 'border-primary bg-primary text-primary-foreground shadow-sm'
+                          : 'border-border/60 bg-background text-foreground/70 hover:border-primary/50 hover:bg-primary/5 hover:text-foreground',
+                      )}
+                    >
+                      {genre.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
 
-        {/* Results */}
-        {selected ? (
-          <div className="mt-6">
+        {/* ── Results ────────────────────────────────────────────────── */}
+        {selected && (
+          <div className="mb-8">
             <div className="mb-3 flex items-center gap-3">
               <div className="flex flex-1 items-baseline gap-2">
-                <h2 className="font-semibold text-foreground">
-                  {selected.icon} {selected.label}
-                </h2>
+                <h2 className="font-semibold text-foreground">{selected.label}</h2>
                 {!loading && total > 0 && (
                   <span className="text-sm text-muted-foreground">
                     — {total} {plural(total, 'книга', 'книги', 'книг')}
@@ -172,7 +179,6 @@ function CatalogContent() {
                 )}
               </div>
 
-              {/* Layout switcher */}
               <div className="flex items-center gap-0.5 rounded-lg bg-muted p-1">
                 {LAYOUTS.map(({ cols: c, icon: Icon, label }) => (
                   <button
@@ -211,7 +217,7 @@ function CatalogContent() {
                 </div>
 
                 {totalPages > 1 && (
-                  <div className="mt-5 flex items-center justify-center gap-2 pb-8">
+                  <div className="mt-5 flex items-center justify-center gap-2">
                     <Button variant="outline" size="sm" onClick={() => handlePage(pageNum - 1)} disabled={pageNum === 1}>
                       ← Назад
                     </Button>
@@ -224,15 +230,48 @@ function CatalogContent() {
               </>
             ) : (
               <p className="text-sm text-muted-foreground">
-                В Абонементі нічого не знайдено за розділом «{selected.label}».
+                В Абонементі нічого не знайдено за жанром «{selected.label}».
               </p>
             )}
           </div>
-        ) : (
-          <p className="mt-8 text-center text-sm text-muted-foreground">
-            Оберіть розділ, щоб побачити книги в Абонементі
+        )}
+
+        {/* ── Subject categories ─────────────────────────────────────── */}
+        <section>
+          <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Тематичні розділи
+          </h2>
+          <div className="grid grid-cols-3 gap-2 sm:grid-cols-5 lg:grid-cols-6">
+            {SUBJECT_CATEGORIES.map((cat) => (
+              <button
+                key={cat.id}
+                onClick={() => selectCategory(cat)}
+                className={cn(
+                  'flex flex-col items-center gap-1.5 rounded-xl px-2 py-3 text-center transition-all duration-150',
+                  'ring-1 focus-visible:ring-2 focus-visible:ring-ring',
+                  selected?.id === cat.id
+                    ? 'bg-primary/10 ring-primary/40 shadow-sm'
+                    : 'bg-card ring-foreground/8 hover:ring-primary/30 hover:shadow-sm',
+                )}
+              >
+                <span className="text-2xl leading-none">{cat.icon}</span>
+                <span className={cn(
+                  'text-xs font-medium leading-tight',
+                  selected?.id === cat.id ? 'text-primary' : 'text-foreground/80',
+                )}>
+                  {cat.label}
+                </span>
+              </button>
+            ))}
+          </div>
+        </section>
+
+        {!selected && (
+          <p className="mt-6 text-center text-sm text-muted-foreground">
+            Оберіть жанр або розділ, щоб побачити книги в Абонементі
           </p>
         )}
+
       </div>
     </div>
   );

@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils';
 import { getBranchInfo } from '@/lib/addresses';
 import { isOnShelf, toggleShelf } from '@/lib/shelf';
 import { addToRecentlyViewed } from '@/lib/recentlyViewed';
+import { matchPublisher } from '@/lib/publishers';
 import type { Book, LibraryItem, BookEnrichment } from '@/lib/types';
 
 const LESYA_CODES = new Set(['156', '157', '158', 'OI', 'OZL', 'KRA', 'ONO', 'INT']);
@@ -172,6 +173,7 @@ export default function BookPage() {
     setOnShelf(isOnShelf(sysno));
   }, [sysno]);
 
+
   const handleShelfToggle = () => {
     if (!book) return;
     const nowOn = toggleShelf({ sysNo: sysno, title: book.title, authors: book.authors, year: book.year });
@@ -290,7 +292,29 @@ export default function BookPage() {
 
                 <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-6 gap-y-1.5">
                   <MetaRow label="Рік"           value={book.year} />
-                  <MetaRow label="Видавництво"   value={book.publisher} />
+                  {book.publisher && (() => {
+                    const match = matchPublisher(book.publisher);
+                    return (
+                      <>
+                        <dt className="text-sm text-muted-foreground">Видавництво</dt>
+                        <dd className="text-sm text-foreground">
+                          {match ? (
+                            <a
+                              href={match.publisher.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 transition-colors hover:text-primary hover:underline"
+                            >
+                              {match.displayName}
+                              <ExternalLink className="h-3 w-3 opacity-50" />
+                            </a>
+                          ) : (
+                            book.publisher
+                          )}
+                        </dd>
+                      </>
+                    );
+                  })()}
                   <MetaRow label="Місце видання" value={book.place} />
                   <MetaRow label="Обсяг"         value={book.pages} />
                   <MetaRow label="ISBN"          value={book.isbn} />
@@ -300,7 +324,11 @@ export default function BookPage() {
                       <dt className="text-sm text-muted-foreground">Жанр</dt>
                       <dd className="flex flex-wrap gap-1">
                         {book.genres.map((g) => (
-                          <Badge key={g} variant="secondary">{g}</Badge>
+                          <Link key={g} href={`/?q=${encodeURIComponent(g)}&code=WSU`}>
+                            <Badge variant="secondary" className="cursor-pointer transition-colors hover:bg-primary/15 hover:text-primary">
+                              {g}
+                            </Badge>
+                          </Link>
                         ))}
                       </dd>
                     </>
@@ -366,6 +394,7 @@ export default function BookPage() {
         ) : (
           <p className="text-muted-foreground">Метадані не знайдено (sys_no: {sysno})</p>
         )}
+
 
         <Separator className="my-5" />
 

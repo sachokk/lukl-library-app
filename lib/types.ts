@@ -56,6 +56,7 @@ export interface SearchResult {
   books: Book[];
   total: number;
   setNumber?: string;
+  session?: string; // OPAC session token, present when lesya filter is active
 }
 
 export type SearchCode =

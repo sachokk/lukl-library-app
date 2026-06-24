@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect, Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { Search, BookOpen } from 'lucide-react';
 import { BookCard } from '@/components/BookCard';
 import { Button } from '@/components/ui/button';
@@ -22,36 +22,53 @@ const PER_PAGE = 20;
 
 function SearchContent() {
   const searchParams = useSearchParams();
-  const initQ    = searchParams.get('q') ?? '';
-  const initCode = (searchParams.get('code') ?? 'WRD') as SearchCode;
+  const router       = useRouter();
+  const initQ       = searchParams.get('q') ?? '';
+  const initCode    = (searchParams.get('code') ?? 'WRD') as SearchCode;
+  const initPage    = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10));
+  const initLesya   = searchParams.get('lesya') === '1';
+  const initSession = searchParams.get('session') ?? undefined;
 
-  const [query, setQuery]       = useState(initQ);
-  const [code, setCode]         = useState<SearchCode>(initCode);
-  const [books, setBooks]       = useState<Book[]>([]);
-  const [total, setTotal]       = useState(0);
-  const [page, setPage]         = useState(1);
-  const [loading, setLoading]   = useState(false);
-  const [error, setError]       = useState('');
-  const [searched, setSearched] = useState('');
+  const [query, setQuery]         = useState(initQ);
+  const [code, setCode]           = useState<SearchCode>(initCode);
+  const [onlyLesya, setOnlyLesya] = useState(initLesya);
+  const [session, setSession]     = useState<string | undefined>(initSession);
+  const [books, setBooks]         = useState<Book[]>([]);
+  const [total, setTotal]         = useState(0);
+  const [page, setPage]           = useState(initPage);
+  const [loading, setLoading]     = useState(false);
+  const [error, setError]         = useState('');
+  const [searched, setSearched]   = useState('');
   const [recentBooks, setRecentBooks] = useState<RecentBook[]>([]);
 
-  // Load recently viewed from localStorage
   useEffect(() => {
     setRecentBooks(getRecentlyViewed());
   }, []);
 
-  const doSearch = useCallback(async (q: string, c: SearchCode, p: number) => {
+  const doSearch = useCallback(async (
+    q: string, c: SearchCode, p: number, lesya: boolean, sess?: string,
+  ) => {
     if (!q.trim()) return;
     setLoading(true);
     setError('');
     try {
-      const start = (p - 1) * PER_PAGE + 1;
-      const res   = await fetch(`/api/search?q=${encodeURIComponent(q)}&code=${c}&start=${start}&count=${PER_PAGE}`);
-      const data  = await res.json();
+      let url: string;
+      if (lesya) {
+        const params = new URLSearchParams({ q, code: c, page: String(p) });
+        params.set('lesya', '1');
+        if (sess) params.set('session', sess);
+        url = `/api/search?${params}`;
+      } else {
+        const start = (p - 1) * PER_PAGE + 1;
+        url = `/api/search?q=${encodeURIComponent(q)}&code=${c}&start=${start}&count=${PER_PAGE}`;
+      }
+      const res  = await fetch(url);
+      const data = await res.json();
       if (data.error) throw new Error(data.error);
       setBooks(data.books ?? []);
       setTotal(data.total ?? 0);
       setSearched(q);
+      if (data.session) setSession(data.session);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка пошуку');
     } finally {
@@ -59,22 +76,46 @@ function SearchContent() {
     }
   }, []);
 
-  // Auto-search on mount when URL has query (e.g. from author link)
+  // Auto-search on mount when URL has query (back navigation or author link)
   useEffect(() => {
-    if (initQ) doSearch(initQ, initCode, 1);
+    if (initQ) doSearch(initQ, initCode, initPage, initLesya, initSession);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const buildUrl = (q: string, c: SearchCode, p: number, lesya: boolean, sess?: string) => {
+    const params = new URLSearchParams({ q, code: c });
+    if (lesya) params.set('lesya', '1');
+    if (p > 1) params.set('page', String(p));
+    if (lesya && sess) params.set('session', sess);
+    return `/?${params}`;
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setPage(1);
-    doSearch(query, code, 1);
+    setSession(undefined);
+    doSearch(query, code, 1, onlyLesya);
+    router.replace(buildUrl(query, code, 1, onlyLesya));
   };
 
   const handlePage = (p: number) => {
     setPage(p);
-    doSearch(searched || query, code, p);
+    const q    = searched || query;
+    const sess = p === 1 ? undefined : session;
+    doSearch(q, code, p, onlyLesya, sess);
+    router.replace(buildUrl(q, code, p, onlyLesya, sess));
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleLesyaToggle = () => {
+    const next = !onlyLesya;
+    setOnlyLesya(next);
+    if (searched) {
+      setPage(1);
+      setSession(undefined);
+      doSearch(searched, code, 1, next);
+      router.replace(buildUrl(searched, code, 1, next));
+    }
   };
 
   const clearSearch = () => {
@@ -83,7 +124,8 @@ function SearchContent() {
     setTotal(0);
     setQuery('');
     setError('');
-    // Refresh recent list in case new books were viewed
+    setSession(undefined);
+    router.replace(onlyLesya ? '/?lesya=1' : '/');
     setRecentBooks(getRecentlyViewed());
   };
 
@@ -141,6 +183,40 @@ function SearchContent() {
               </button>
             ))}
           </div>
+
+          {/* Filters panel */}
+          <div className="mt-2.5 space-y-2 rounded-xl border border-border/50 bg-muted/30 px-3 py-2.5">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50">
+              Фільтри
+            </p>
+
+            {/* Availability toggle */}
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={handleLesyaToggle}
+              onKeyDown={(e) => e.key === 'Enter' && handleLesyaToggle()}
+              className="flex cursor-pointer select-none items-center gap-2.5"
+            >
+              <span
+                className={cn(
+                  'relative inline-flex h-[18px] w-8 shrink-0 rounded-full transition-colors duration-200',
+                  onlyLesya ? 'bg-primary' : 'bg-input',
+                )}
+              >
+                <span
+                  className={cn(
+                    'absolute top-[3px] inline-block h-3 w-3 rounded-full bg-white shadow transition-transform duration-200',
+                    onlyLesya ? 'translate-x-[18px]' : 'translate-x-[3px]',
+                  )}
+                />
+              </span>
+              <span className="text-xs leading-snug text-foreground">
+                В наявності в бібліотеці ім. Лесі Українки
+              </span>
+            </div>
+
+          </div>
         </form>
 
         {error && (
@@ -159,8 +235,9 @@ function SearchContent() {
           <>
             <p className="mb-3 text-sm text-muted-foreground">
               {total === 0
-                ? `Нічого не знайдено за «${searched}»`
-                : `Знайдено ${total} ${plural(total, 'запис', 'записи', 'записів')} за «${searched}»`}
+                ? `Нічого не знайдено за «${searched}»${onlyLesya ? ' · ім. Лесі' : ''}`
+                : `Знайдено ${total} ${plural(total, 'запис', 'записи', 'записів')} за «${searched}»${onlyLesya ? ' · ім. Лесі' : ''}`
+              }
             </p>
 
             {books.length > 0 && (

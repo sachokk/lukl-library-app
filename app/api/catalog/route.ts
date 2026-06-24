@@ -7,11 +7,12 @@ export async function GET(req: NextRequest) {
   const sublibrary = searchParams.get('sublibrary') ?? '156';
   const page       = parseInt(searchParams.get('page') ?? '1', 10);
   const session    = searchParams.get('session') ?? undefined;
+  const findCode   = searchParams.get('findCode') ?? 'WSU';
 
   if (!subject) return NextResponse.json({ error: 'Missing subject' }, { status: 400 });
 
   try {
-    const result = await searchCatalog(subject, sublibrary, page, session);
+    const result = await searchCatalog(subject, sublibrary, page, session, findCode);
     return NextResponse.json(result);
   } catch (e) {
     console.error(e);
